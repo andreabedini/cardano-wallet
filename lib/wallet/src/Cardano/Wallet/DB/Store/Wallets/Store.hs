@@ -18,6 +18,7 @@ Implementation of a store for 'TxWalletsHistory'
 -}
 module Cardano.Wallet.DB.Store.Wallets.Store
     ( mkStoreTxWalletsHistory
+    , mkStoreWalletsMetaWithSubmissions
     , DeltaTxWalletsHistory(..)
     ) where
 
