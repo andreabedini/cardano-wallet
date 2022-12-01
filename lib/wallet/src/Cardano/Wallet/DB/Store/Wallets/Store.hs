@@ -69,7 +69,8 @@ import qualified Cardano.Wallet.Primitive.Types as W
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 
-mkStoreWalletMetaWithSubmissions :: W.WalletId -> Store
+mkStoreWalletMetaWithSubmissions
+    :: W.WalletId -> Store
         (SqlPersistT IO)
         (DeltaWalletsMetaWithSubmissions)
 mkStoreWalletMetaWithSubmissions wid =
@@ -156,13 +157,31 @@ mkStoreTxWalletsHistory =
             ChangeTxMetaWalletsHistory wid change
                 -> updateS mkStoreWalletsMetaWithSubmissions mtxmh
                 $ Adjust wid change
+
+            RollbackTo slot -> do
+                -- roll back metas for all wallets
+                forM_ (Map.toList mtxmh) $ \(wid,metasubs) -> do
+                    updateS (mkStoreWalletMetaWithSubmissions wid) metasubs
+                        $ ChangeMeta
+                        $ TxMetaStore.Manipulate
+                        $ TxMetaStore.RollBackTxMetaHistory slot
+
+                -- delete those transactions that have been rolled back
+                let getDeletedMetas :: TxMetaHistory -> [TxId]
+                    getDeletedMetas metas =
+                        snd . TxMetaStore.rollbackTxMetaHistory slot metas
+                forM_ (Map.map getDeletedMetas mtxmh) $
+                    mapM_ (updateS mkStoreTransactions txh . DeleteTx)
+
             GarbageCollectTxWalletsHistory -> mapM_
                 (updateS mkStoreTransactions txh . DeleteTx)
                 $ Map.keys
                 $ Map.withoutKeys mtxh
                 $ walletsLinkedTransactions mtxmh
+
             RemoveWallet wid -> updateS mkStoreWalletsMetaWithSubmissions mtxmh
                 $ Delete wid
+
             ExpandTxWalletsHistory wid cs -> do
                 updateS mkStoreTransactions txh
                     $ Append

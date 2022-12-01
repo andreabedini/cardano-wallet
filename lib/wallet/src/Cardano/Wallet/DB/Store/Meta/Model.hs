@@ -19,8 +19,8 @@ module Cardano.Wallet.DB.Store.Meta.Model
     , ManipulateTxMetaHistory(..)
     , TxMetaHistory(..)
     , mkTxMetaHistory
-    )
-    where
+    , rollbackTxMetaHistory
+    ) where
 
 import Prelude
 
@@ -50,6 +50,9 @@ import qualified Cardano.Wallet.Primitive.Types.Coin as W
 import qualified Cardano.Wallet.Primitive.Types.Tx as W
 import qualified Data.Map.Strict as Map
 
+{-----------------------------------------------------------------------------
+    Type
+------------------------------------------------------------------------------}
 -- | A collection of `TxMeta`, indexed by transaction identifier.
 newtype TxMetaHistory =
     TxMetaHistory { relations :: Map TxId TxMeta }
@@ -60,6 +63,9 @@ instance Buildable TxMetaHistory where
         "TxMetaHistory "
         <> build (length $ relations txs)
 
+{-----------------------------------------------------------------------------
+    Operations
+------------------------------------------------------------------------------}
 -- | Verbs for 'TxMeta' changes
 -- that can be issued independently from the transaction store.
 data ManipulateTxMetaHistory
@@ -107,21 +113,34 @@ instance Delta ManipulateTxMetaHistory where
       where
         isExpired Nothing = False
         isExpired (Just tip') = tip' <= tip
-    apply (RollBackTxMetaHistory point) (TxMetaHistory txs) =
-        TxMetaHistory $ Map.mapMaybe rescheduleOrForget txs
-      where
-        rescheduleOrForget :: TxMeta -> Maybe TxMeta
-        rescheduleOrForget meta =
-            let
-                isAfter = txMetaSlot meta > point
-                isIncoming = txMetaDirection meta == W.Incoming
-            in case (isAfter, isIncoming) of
-                   (True,True) -> mzero
-                   (True,False) -> Just
-                       $ meta
-                       { txMetaSlot = point, txMetaStatus = W.Pending }
-                   _ -> Just meta
+    apply (RollBackTxMetaHistory point) metas =
+        rollbackTxMetaHistory point metas
 
+-- | Rollback a 'TxMetaHistory' to a given slot.
+-- Returns the new 'TxMetaHistory' as well as the 'TxId's that
+-- have been /deleted/ due to the rollback.
+rollbackTxMetaHistory
+    :: W.SlotNo -> TxMetaHistory -> (TxMetaHistory, [TxId])
+rollbackTxMetaHistory point (TxMetaHistory txs) =
+    (TxMetaHistory new, Map.keys deleted)
+  where
+    (deleted, new) = Map.mapEither rescheduleOrForget txs
+
+    rescheduleOrForget :: TxMeta -> Either () TxMeta
+    rescheduleOrForget meta =
+        let
+            isAfter = txMetaSlot meta > point
+            isIncoming = txMetaDirection meta == W.Incoming
+        in case (isAfter, isIncoming) of
+                (True,True) -> Left ()
+                (True,False) -> Right
+                    $ meta
+                    { txMetaSlot = point, txMetaStatus = W.Pending }
+                _ -> Right meta
+
+{-----------------------------------------------------------------------------
+    Type conversion helpers
+------------------------------------------------------------------------------}
 mkTxMetaEntity :: W.WalletId -> W.Tx -> W.TxMeta -> TxMeta
 mkTxMetaEntity wid tx derived =
     TxMeta
@@ -148,5 +167,3 @@ mkTxMetaHistory wid txs = TxMetaHistory $
         [ (TxId $ tx ^. #txId, mkTxMetaEntity wid tx meta)
             | (tx, meta) <- txs
         ]
-
-

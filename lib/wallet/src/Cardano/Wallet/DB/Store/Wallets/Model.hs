@@ -84,6 +84,7 @@ import qualified Data.Set as Set
 data DeltaTxWalletsHistory
     = ExpandTxWalletsHistory W.WalletId [(WT.Tx, WT.TxMeta)]
     | ChangeTxMetaWalletsHistory W.WalletId DeltaWalletsMetaWithSubmissions
+    | RollbackTo W.SlotNo
     | GarbageCollectTxWalletsHistory
     | RemoveWallet W.WalletId
     deriving ( Show, Eq )
@@ -130,14 +131,28 @@ instance Delta DeltaTxWalletsHistory where
         (txh, garbageCollectEmptyWallets
             $ mtxmh & apply (Adjust wid change)
             )
-    apply GarbageCollectTxWalletsHistory
-        (TxSet txh  , mtxmh) =
-            let gc :: Map TxId x -> Map TxId x
-                gc x = Map.restrictKeys x
-                    $ walletsLinkedTransactions mtxmh
-            in ( (TxSet $ gc txh) , mtxmh)
-    apply (RemoveWallet wid) (x , mtxmh) = (x, Map.delete wid mtxmh)
+    apply (RollbackTo slot) (x, mtxmh) =
+        -- Roll back all wallets to a given slot (number)
+        -- and garbage collect transactions that no longer
+        -- have a 'TxMeta' associated with them.
+        garbageCollectEmptyWallets
+        $ garbageCollectTxWalletsHistory
+            (x, Map.map (apply (Adjust wid change)) mtxmh)
+      where
+        change
+            = ChangeMeta
+            . TxMetaStore.Manipulate
+            . TxMetaStore.RollBackTxMetaHistory slot
+    apply (RemoveWallet wid) (x, mtxmh) = (x, Map.delete wid mtxmh)
+    apply GarbageCollectTxWalletsHistory x = garbageCollectTxWalletsHistory x
 
+-- | Garbage collect all transactions that are no longer referenced
+-- by any 'TxMeta'.
+garbageCollectTxWalletsHistory :: TxWalletsHistory -> TxWalletsHistory
+garbageCollectTxWalletsHistory (TxSet txh, mtxmh) = (TxSet (gc txh), mtxmh)
+  where
+    gc :: Map TxId x -> Map TxId x
+    gc x = Map.restrictKeys x $ walletsLinkedTransactions mtxmh
 
 -- necessary because database will not distinguish between
 -- a missing wallet in the map

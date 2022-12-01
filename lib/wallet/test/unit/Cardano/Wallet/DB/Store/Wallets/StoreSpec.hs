@@ -70,8 +70,12 @@ genDeltaTxWallets wid (_, metaMap) = do
                   (Just $ Map.keys $ view #relations metas)
             ),
             (5, pure GarbageCollectTxWalletsHistory),
+            (5, RollbackTo . txMetaSlot <$> chooseFromMap (relations metas) )
             (1, pure $ RemoveWallet wid)
           ]
   frequency $
     (10, ExpandTxWalletsHistory wid . getNonEmpty <$> arbitrary) :
     metaGens
+
+chooseFromMap :: Map k a -> Gen a
+chooseFromMap m = snd . (`Map.elemAt` m) <$> choose (0, Map.size)
