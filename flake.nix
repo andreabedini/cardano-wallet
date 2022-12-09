@@ -382,6 +382,19 @@
                 };
               });
             });
+
+          # this throws
+          # zsh: segmentation fault  nix build --dry-run .#ci.x86_64-darwin.checks.compiled.commit
+          # nix (Nix) 2.12.0
+          removeChecksIntegration = x: 
+            lib.mapAttrsRecursiveCond
+              (value: !(lib.isDerivation value)) # do not modify attributes of derivations
+              (path: value:
+                if lib.any (lib.hasPrefix "integration") path
+                  then []
+                  else value
+              ) x;
+
         in
         rec {
 
@@ -410,11 +423,25 @@
             };
           });
 
+          checks = packages.checks;
+
           apps = lib.mapAttrs (n: p: { type = "app"; program = p.exePath or "${p}/bin/${p.name or n}"; }) packages;
 
           devShell = project.shell;
 
           devShells = mkDevShells project;
+
+          # Continuous integration
+          ci.checks.compiled._test = removeChecksIntegration packages.tests;
+          ci.checks.compiled.commit = pkgs.releaseTools.aggregate
+            {
+              name =
+                "checks-compiled-commit";
+              meta.description =
+                "Checks that are run on compiled artifacts for every commit";
+              constituents =
+                lib.collect lib.isDerivation (removeChecksIntegration checks);
+            };
 
           systemHydraJobs = mkSystemHydraJobs hydraProject;
           systemHydraJobsPr = mkSystemHydraJobs hydraProjectPr;
@@ -423,6 +450,7 @@
         // tullia.fromSimple system (import nix/tullia.nix);
       
       outputsSystems = eachSystem supportedSystems mkOutputs;
+
     in
       lib.recursiveUpdate
         (removeAttrs outputsSystems [ "systemHydraJobs" "systemHydraJobsPr" "systemHydraJobsBors" ])
