@@ -652,14 +652,8 @@ newDBLayerWith _cacheBehavior _tr ti SqliteContext{runQuery} = do
                     lift $ deleteStakeKeyCerts wid
                         [ StakeKeyCertSlot >. nearestPoint
                         ]
-                    ExceptT $ modifyDBMaybe transactionsDBVar $ \_ ->
-                        let
-                            delta = Just
-                                $ ChangeTxMetaWalletsHistory wid
-                                $ ChangeMeta
-                                $ Manipulate
-                                $ RollBackTxMetaHistory nearestPoint
-                        in  (delta, Right ())
+                    lift $ updateDBVar transactionsDBVar $
+                        RollbackTo nearestPoint
                     pure
                         $ W.chainPointFromBlockHeader
                         $ view #currentTip wcp

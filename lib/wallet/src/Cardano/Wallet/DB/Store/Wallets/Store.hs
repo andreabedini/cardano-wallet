@@ -26,6 +26,8 @@ import Prelude
 
 import Cardano.Wallet.DB.Sqlite.Schema
     ( EntityField (..), LocalTxSubmission, TxMeta )
+import Cardano.Wallet.DB.Sqlite.Types
+    ( TxId (..) )
 import Cardano.Wallet.DB.Store.Meta.Model
     ( TxMetaHistory (TxMetaHistory), mkTxMetaHistory )
 import Cardano.Wallet.DB.Store.Meta.Store
@@ -168,8 +170,8 @@ mkStoreTxWalletsHistory =
 
                 -- delete those transactions that have been rolled back
                 let getDeletedMetas :: TxMetaHistory -> [TxId]
-                    getDeletedMetas metas =
-                        snd . TxMetaStore.rollbackTxMetaHistory slot metas
+                    getDeletedMetas =
+                        snd . TxMetaStore.rollbackTxMetaHistory slot
                 forM_ (Map.map getDeletedMetas mtxmh) $
                     mapM_ (updateS mkStoreTransactions txh . DeleteTx)
 

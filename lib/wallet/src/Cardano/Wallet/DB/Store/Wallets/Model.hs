@@ -135,14 +135,13 @@ instance Delta DeltaTxWalletsHistory where
         -- Roll back all wallets to a given slot (number)
         -- and garbage collect transactions that no longer
         -- have a 'TxMeta' associated with them.
-        garbageCollectEmptyWallets
-        $ garbageCollectTxWalletsHistory
-            (x, Map.map (apply (Adjust wid change)) mtxmh)
+        garbageCollectTxWalletsHistory
+            (x, garbageCollectEmptyWallets $ Map.map (apply change) mtxmh)
       where
         change
             = ChangeMeta
             . TxMetaStore.Manipulate
-            . TxMetaStore.RollBackTxMetaHistory slot
+            $ TxMetaStore.RollBackTxMetaHistory slot
     apply (RemoveWallet wid) (x, mtxmh) = (x, Map.delete wid mtxmh)
     apply GarbageCollectTxWalletsHistory x = garbageCollectTxWalletsHistory x
 

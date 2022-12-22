@@ -114,7 +114,7 @@ instance Delta ManipulateTxMetaHistory where
         isExpired Nothing = False
         isExpired (Just tip') = tip' <= tip
     apply (RollBackTxMetaHistory point) metas =
-        rollbackTxMetaHistory point metas
+        fst $ rollbackTxMetaHistory point metas
 
 -- | Rollback a 'TxMetaHistory' to a given slot.
 -- Returns the new 'TxMetaHistory' as well as the 'TxId's that
