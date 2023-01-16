@@ -33,6 +33,7 @@ import Cardano.Wallet.DB.Store.Meta.Model
 import Cardano.Wallet.DB.Store.Submissions.Model
     ( DeltaTxLocalSubmission (..), TxLocalSubmissionHistory (..) )
 import Cardano.Wallet.DB.Store.Transactions.Decoration
+    ( DecoratedTxIns, lookupTxOutForTxCollateral, lookupTxOutForTxIn )
 import Cardano.Wallet.DB.Store.Transactions.Model
     ( TxRelation (..)
     , TxSet (..)
