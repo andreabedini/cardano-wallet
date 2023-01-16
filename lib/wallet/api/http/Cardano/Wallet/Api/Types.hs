@@ -1034,8 +1034,8 @@ instance ToJSON ApiSealedTxEncoding where
     toJSON = toJSON . toText
 
 data ApiConstructTransaction (n :: NetworkDiscriminant) = ApiConstructTransaction
-    { transaction :: !ApiSerialisedTransaction
-    , coinSelection :: !(ApiCoinSelection n)
+    { transaction :: ApiSerialisedTransaction
+    , coinSelection :: (ApiCoinSelection n)
     , fee :: !(Quantity "lovelace" Natural)
     }
     deriving (Eq, Generic, Show, Typeable)

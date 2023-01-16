@@ -2131,8 +2131,7 @@ postTransactionOld ctx@ApiLayer{..} genChange (ApiT wid) body =
                     }
             (tx, txMeta, txTime) <- atomicallyWithHandler
                 (ctx ^. walletLocks) (PostTransactionOld wid) $ do
-                -- sel' <- liftHandler $ W.assignChangeAddressesAndUpdateDb wrk wid genChange sel
-                (tx, txMeta, txTime, sealedTx, _balancingResultInfo) <- liftIO $ do
+                (tx, txMeta, txTime, sealedTx, balancingResultInfo) <- liftIO $ do
                     pureTimeInterpreter <- snapshot ti
                     W.buildAndSignTransactionNew @k @'CredFromKeyK @s @n
                         (MsgWallet >$< wrk ^. W.logger)
@@ -2148,7 +2147,13 @@ postTransactionOld ctx@ApiLayer{..} genChange (ApiT wid) body =
                             addressAmountToTxOut <$> body ^. #payments))
                         txCtx
                 liftHandler $ W.submitTx @_ @s @k wrk wid (tx, txMeta, sealedTx)
+
+                let W.BalancingResultInfo _ s' = balancingResultInfo
+                liftIO $ W.writeChangeAddressStateToDb db wid s'
+
                 pure (tx, txMeta, txTime)
+
+
             pp <- liftIO $ NW.currentProtocolParameters netLayer
             mkApiTransaction ti wrk wid #pendingSince MkApiTransactionParams
                 { txId = tx ^. #txId
