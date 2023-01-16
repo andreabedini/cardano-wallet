@@ -533,7 +533,7 @@ import Control.DeepSeq
 import Control.Error.Util
     ( failWith )
 import Control.Monad
-    ( forM, forever, join, void, when, (<=<), (>=>) )
+    ( forM, forever, join, void, when, (<=<) )
 import Control.Monad.Error.Class
     ( throwError )
 import Control.Monad.IO.Class
@@ -1309,11 +1309,11 @@ mkLegacyWallet ctx wid cp meta _ pending progress = do
             pure Nothing
         Just (WalletPassphraseInfo time EncryptWithPBKDF2) ->
             pure $ Just $ ApiWalletPassphraseInfo time
-        Just (WalletPassphraseInfo time EncryptWithScrypt) -> do
-            withWorkerCtx @_ @s @k ctx wid liftE liftE $
-                matchEmptyPassphrase >=> \case
-                    Right{} -> pure Nothing
-                    Left{} -> pure $ Just $ ApiWalletPassphraseInfo time
+        Just (WalletPassphraseInfo time EncryptWithScrypt) ->
+            withWorkerCtx @_ @s @k ctx wid liftE liftE $ \wrk ->
+                matchEmptyPassphrase (wrk ^. typed) <&> \case
+                    Right{} -> Nothing
+                    Left{} -> Just $ ApiWalletPassphraseInfo time
 
     tip' <- liftIO $ getWalletTip (expectAndThrowFailures ti) cp
     let available = availableBalance pending cp
@@ -1338,11 +1338,9 @@ mkLegacyWallet ctx wid cp meta _ pending progress = do
     ti :: TimeInterpreter (ExceptT PastHorizonException IO)
     ti = timeInterpreter $ ctx ^. networkLayer
 
-    matchEmptyPassphrase
-        :: WorkerCtx ctx
-        -> Handler (Either ErrWithRootKey ())
-    matchEmptyPassphrase wrk = liftIO $ runExceptT $
-        W.withRootKey @_ @s @k wrk wid mempty Prelude.id (\_ _ -> pure ())
+    matchEmptyPassphrase :: DBLayer IO s k -> Handler (Either ErrWithRootKey ())
+    matchEmptyPassphrase db = liftIO $ runExceptT $
+        W.withRootKey @s @k db wid mempty Prelude.id (\_ _ -> pure ())
 
 postRandomWallet
     :: forall ctx s k n.
@@ -2062,8 +2060,8 @@ signTransaction ctx (ApiT wid) body = do
             db = wrk ^. W.dbLayer @IO @s @k
             tl = wrk ^. W.transactionLayer @k @ktype
             nl = wrk ^. W.networkLayer
-        db & \W.DBLayer{atomically, readCheckpoint} -> do
-            W.withRootKey @_ @s wrk wid pwd ErrWitnessTxWithRootKey $ \rootK scheme -> do
+        db & \W.DBLayer{atomically, readCheckpoint} ->
+            W.withRootKey @s @k db wid pwd ErrWitnessTxWithRootKey $ \rootK scheme -> do
                 cp <- mapExceptT atomically
                     $ withExceptT ErrWitnessTxNoSuchWallet
                     $ W.withNoSuchWallet wid
@@ -2087,90 +2085,75 @@ signTransaction ctx (ApiT wid) body = do
     -- TODO: The body+witnesses seem redundant with the sealedTx already. What's
     -- the use-case for having them provided separately? In the end, the client
     -- should be able to decouple them if they need to.
-    case body ^. #encoding of
-        Just HexEncoded -> pure $ ApiSerialisedTransaction (ApiT sealedTx') HexEncoded
-        _ -> pure $ ApiSerialisedTransaction (ApiT sealedTx') Base64Encoded
+    pure $ ApiSerialisedTransaction (ApiT sealedTx') $
+        case body ^. #encoding of
+            Just HexEncoded -> HexEncoded
+            _otherEncodings -> Base64Encoded
 
 postTransactionOld
     :: forall ctx s k n.
         ( ctx ~ ApiLayer s k 'CredFromKeyK
         , GenChange s
-        , HardDerivation k
-        , HasNetworkLayer IO ctx
+        , IsOurs s RewardAccount
         , IsOwned s k 'CredFromKeyK
         , Bounded (Index (AddressIndexDerivationType k) (AddressCredential k))
         , Typeable n
         , Typeable s
         , Typeable k
         , WalletKey k
-        , AddressBookIso s
         , BoundedAddressLength k
         , HasDelegation s
+        , HardDerivation k
         )
     => ctx
     -> ArgGenChange s
     -> ApiT WalletId
     -> PostTransactionOldData n
     -> Handler (ApiTransaction n)
-postTransactionOld ctx@ApiLayer{..} genChange (ApiT wid) body = do
-    let pwd = coerce $ body ^. #passphrase . #getApiT
-    let outs = addressAmountToTxOut <$> body ^. #payments
-    let md = body ^? #metadata . traverse . #txMetadataWithSchema_metadata
-    let mTTL = body ^? #timeToLive . traverse . #getQuantity
-    mkRwdAcct <- case body ^. #withdrawal of
-        Nothing -> pure selfRewardAccountBuilder
-        Just w -> either liftE pure $ shelleyOnlyRewardAccountBuilder @s @_ @n w
+postTransactionOld ctx@ApiLayer{..} genChange (ApiT wid) body =
     withWorkerCtx ctx wid liftE liftE $ \wrk -> do
         let db = wrk ^. dbLayer
         era <- liftIO $ NW.currentNodeEra netLayer
-        ttl <- liftIO $ W.transactionExpirySlot ti mTTL
-        wdrl <- case body ^. #withdrawal of
-            Nothing -> pure NoWithdrawal
-            Just apiWdrl ->
-                shelleyOnlyMkWithdrawal @s @k @n
-                    netLayer txLayer db wid era apiWdrl
-        let txCtx = defaultTransactionCtx
-                { txWithdrawal = wdrl
-                , txMetadata = md
-                , txValidityInterval = (Nothing, ttl)
-                }
-        (sel, tx, txMeta, txTime, pp) <- atomicallyWithHandler
-            (ctx ^. walletLocks) (PostTransactionOld wid) $ do
-            (utxoAvailable, wallet, pendingTxs) <-
-                liftHandler $ W.readWalletUTxOIndex @_ @s @k wrk wid
-            let selectAssetsParams = W.SelectAssetsParams
-                    { outputs = F.toList outs
-                    , pendingTxs
-                    , randomSeed = Nothing
-                    , txContext = txCtx
-                    , utxoAvailableForInputs =
-                        UTxOSelection.fromIndex utxoAvailable
-                    , utxoAvailableForCollateral =
-                        UTxOIndex.toMap utxoAvailable
-                    , wallet
-                    , selectionStrategy = SelectionStrategyOptimal
+        withRecentEra era $ \recentEra -> do
+            ttl <- liftIO $ W.transactionExpirySlot ti $
+                body ^? #timeToLive . traverse . #getQuantity
+            wdrl <- case body ^. #withdrawal of
+                Nothing -> pure NoWithdrawal
+                Just apiWdrl ->
+                    shelleyOnlyMkWithdrawal @s @k @n
+                        netLayer txLayer db wid era apiWdrl
+            let txCtx = defaultTransactionCtx
+                    { txWithdrawal = wdrl
+                    , txMetadata = body ^? #metadata
+                        . traverse
+                        . #txMetadataWithSchema_metadata
+                    , txValidityInterval = (Nothing, ttl)
                     }
+            (tx, txMeta, txTime) <- atomicallyWithHandler
+                (ctx ^. walletLocks) (PostTransactionOld wid) $ do
+                -- sel' <- liftHandler $ W.assignChangeAddressesAndUpdateDb wrk wid genChange sel
+                (tx, txMeta, txTime, sealedTx) <- liftIO $ do
+                    pureTimeInterpreter <- snapshot ti
+                    W.buildAndSignTransactionNew @k @'CredFromKeyK @s @n
+                        (MsgWallet >$< wrk ^. W.logger)
+                        pureTimeInterpreter
+                        db
+                        netLayer
+                        (wrk ^. W.transactionLayer)
+                        wid
+                        genChange
+                        (WriteTx.AnyRecentEra recentEra)
+                        (coerce $ body ^. #passphrase . #getApiT)
+                        (PreSelection (NE.toList $
+                            addressAmountToTxOut <$> body ^. #payments))
+                        txCtx
+                liftHandler $ W.submitTx @_ @s @k wrk wid (tx, txMeta, sealedTx)
+                pure (tx, txMeta, txTime)
             pp <- liftIO $ NW.currentProtocolParameters netLayer
-            sel <- liftHandler
-                $ W.selectAssets @_ @_ @s @k @'CredFromKeyK
-                    wrk era pp selectAssetsParams
-                $ const Prelude.id
-            sel' <- liftHandler
-                $ W.assignChangeAddressesAndUpdateDb wrk wid genChange sel
-            (tx, txMeta, txTime, sealedTx) <- liftHandler
-                $ W.buildAndSignTransaction @_ @s @k
-                    wrk wid era mkRwdAcct pwd txCtx sel'
-            liftHandler
-                $ W.submitTx @_ @s @k wrk wid (tx, txMeta, sealedTx)
-            pure (sel, tx, txMeta, txTime, pp)
-        mkApiTransaction
-            (timeInterpreter netLayer)
-            wrk wid
-            #pendingSince
-            MkApiTransactionParams
+            mkApiTransaction ti wrk wid #pendingSince MkApiTransactionParams
                 { txId = tx ^. #txId
                 , txFee = tx ^. #fee
-                , txInputs = NE.toList $ second Just <$> sel ^. #inputs
+                , txInputs = tx ^. #resolvedInputs
                 -- TODO: ADP-957:
                 , txCollateralInputs = []
                 , txOutputs = tx ^. #outputs
@@ -2186,7 +2169,7 @@ postTransactionOld ctx@ApiLayer{..} genChange (ApiT wid) body = do
                 }
   where
     ti :: TimeInterpreter (ExceptT PastHorizonException IO)
-    ti = timeInterpreter (ctx ^. networkLayer)
+    ti = timeInterpreter netLayer
 
 deleteTransaction
     :: forall ctx s k. ctx ~ ApiLayer s k 'CredFromKeyK
@@ -2274,8 +2257,8 @@ mkApiTransactionFromInfo ti wrk wid deposit info metadataSchema = do
         MkApiTransactionParams
             { txId = info ^. #txInfoId
             , txFee = info ^. #txInfoFee
-            , txInputs = info ^. #txInfoInputs <&> drop2nd
-            , txCollateralInputs = info ^. #txInfoCollateralInputs <&> drop2nd
+            , txInputs = info ^. #txInfoInputs
+            , txCollateralInputs = info ^. #txInfoCollateralInputs
             , txOutputs = info ^. #txInfoOutputs
             , txCollateralOutput = info ^. #txInfoCollateralOutput
             , txWithdrawals = info ^. #txInfoWithdrawals
@@ -2292,7 +2275,6 @@ mkApiTransactionFromInfo ti wrk wid deposit info metadataSchema = do
         InLedger -> apiTx {depth = Just $ info ^. #txInfoDepth}
         Expired  -> apiTx
   where
-    drop2nd (a,_,c) = (a,c)
     status :: Lens' (ApiTransaction n) (Maybe ApiBlockReference)
     status = case info ^. #txInfoMeta . #status of
         Pending  -> #pendingSince
@@ -2522,6 +2504,7 @@ constructTransaction api genChange knownPools poolStatus apiWalletId body = do
                     (unsignedTx rewardPath (outs ++ mintingOuts) apiDecoded)
                 , fee = apiDecoded ^. #fee
                 }
+
   where
     ti :: TimeInterpreter (ExceptT PastHorizonException IO)
     ti = timeInterpreter (api ^. networkLayer)
@@ -3021,7 +3004,7 @@ balanceTransaction ctx@ApiLayer{..} genChange (ApiT wid) body = do
             . cardanoTxIdeallyNoLaterThan era
             . getApiT $ body ^. #transaction
 
-        res <- WriteTx.withRecentEra anyRecentTx
+        res <- WriteTx.withInAnyRecentEra anyRecentTx
             (fmap inAnyCardanoEra . balanceTx <=< mkPartialTx)
 
         case body ^. #encoding of
@@ -3207,7 +3190,7 @@ submitTransaction ctx apiw@(ApiT wid) apitx = do
                   txValidityInterval = (Nothing, ttl)
                 , txWithdrawal = wdrl
                 }
-        txMeta <- liftHandler $ W.constructTxMeta @_ @s @k wrk wid txCtx ourInps ourOuts
+        txMeta <- liftHandler $ W.constructTxMeta db wid txCtx ourInps ourOuts
         liftHandler
             $ W.submitTx @_ @s @k wrk wid (tx, txMeta, sealedTx)
     return $ ApiTxId (apiDecoded ^. #id)
@@ -3321,10 +3304,10 @@ submitSharedTransaction ctx apiw@(ApiT wid) apitx = do
         let txCtx = defaultTransactionCtx
                 { txValidityInterval = (Nothing, ttl)
                 }
-        txMeta <- liftHandler $ W.constructTxMeta @_ @s @k wrk wid txCtx ourInps ourOuts
-        liftHandler
-            $ W.submitTx @_ @s @k wrk wid (tx, txMeta, sealedTx)
-    return $ ApiTxId (apiDecoded ^. #id)
+        let db = wrk ^. dbLayer
+        txMeta <- liftHandler $ W.constructTxMeta db wid txCtx ourInps ourOuts
+        liftHandler $ W.submitTx @_ @s @k wrk wid (tx, txMeta, sealedTx)
+    pure $ ApiTxId (apiDecoded ^. #id)
   where
     tl = ctx ^. W.transactionLayer @k @'CredFromScriptK
     ti :: TimeInterpreter (ExceptT PastHorizonException IO)
@@ -4099,8 +4082,8 @@ rndStateChange
     -> Handler (ArgGenChange s)
 rndStateChange ctx (ApiT wid) pwd =
     withWorkerCtx @_ @s @k ctx wid liftE liftE $ \wrk -> liftHandler $
-        W.withRootKey @_ @s @k wrk wid pwd ErrSignPaymentWithRootKey $ \xprv scheme ->
-            pure (xprv, preparePassphrase scheme pwd)
+        W.withRootKey (wrk ^. dbLayer) wid pwd ErrSignPaymentWithRootKey $
+            \xprv scheme -> pure (xprv, preparePassphrase scheme pwd)
 
 type RewardAccountBuilder k
         =  (k 'RootK XPrv, Passphrase "encryption")

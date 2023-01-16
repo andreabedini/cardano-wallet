@@ -20,6 +20,7 @@
 {-# LANGUAGE UndecidableInstances #-}
 
 {-# OPTIONS_GHC -fno-warn-orphans #-}
+{-# LANGUAGE InstanceSigs #-}
 
 -- |
 -- Copyright: © 2018-2020 IOHK
@@ -244,6 +245,7 @@ import Test.QuickCheck
     , applyArbitrary2
     , arbitraryBoundedEnum
     , collect
+    , counterexample
     , elements
     , frequency
     , generate
@@ -293,11 +295,14 @@ import qualified Data.ByteString.Char8 as B8
 import qualified Data.List as L
 import qualified Data.Map as Map
 import qualified Data.Set as Set
+import qualified Data.Text.Lazy as T
 import qualified Data.TreeDiff as Expr
 import qualified Data.TreeDiff.OMap as Expr
 import qualified Test.QuickCheck as QC
 import qualified Test.StateMachine.Types as QSM
 import qualified Test.StateMachine.Types.Rank2 as Rank2
+import Text.Pretty.Simple
+    ( pShow )
 
 {-------------------------------------------------------------------------------
   Mock implementation
@@ -338,6 +343,7 @@ zeroes :: ByteString
 zeroes = B8.replicate 256 '0'
 
 instance MockPrivKey (ShelleyKey 'RootK) where
+    fromMockPrivKey :: MPrivKey -> (ShelleyKey 'RootK XPrv, PassphraseHash)
     fromMockPrivKey s = (k, unMockPrivKeyHash s)
       where (k, _) = unsafeDeserializeXPrv (zeroes, mempty)
 
@@ -1426,7 +1432,7 @@ prop_sequential newDB =
             (hist, _model, res) <- runCommands sm' cmds
             prettyCommands sm' hist
                 $ measureTagCoverage cmds
-                $ res === Ok
+                $ counterexample (T.unpack $ pShow res) (res === Ok)
             run destroyDB -- fixme: bracket difficult
   where
     measureTagCoverage :: Commands (At (Cmd s)) (At (Resp s)) -> Property -> Property

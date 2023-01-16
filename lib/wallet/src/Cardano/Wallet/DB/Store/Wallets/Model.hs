@@ -33,13 +33,10 @@ import Cardano.Wallet.DB.Store.Meta.Model
 import Cardano.Wallet.DB.Store.Submissions.Model
     ( DeltaTxLocalSubmission (..), TxLocalSubmissionHistory (..) )
 import Cardano.Wallet.DB.Store.Transactions.Model
-    ( DecoratedTxIns
-    , TxRelation (..)
+    ( TxRelation (..)
     , TxSet (..)
     , fromTxCollateralOut
     , fromTxOut
-    , lookupTxOutForTxCollateral
-    , lookupTxOutForTxIn
     , mkTxSet
     , txCBORPrism
     )
@@ -160,10 +157,9 @@ mkTransactionInfo :: Monad m
     => TimeInterpreter m
     -> W.BlockHeader
     -> TxRelation
-    -> DecoratedTxIns
     -> DB.TxMeta
     -> m WT.TransactionInfo
-mkTransactionInfo ti tip TxRelation{..} decor DB.TxMeta{..} = do
+mkTransactionInfo ti tip TxRelation{..} DB.TxMeta{..} = do
     txTime <- interpretQuery ti . slotToUTCTime $ txMetaSlot
     return
         $ WT.TransactionInfo
@@ -201,16 +197,14 @@ mkTransactionInfo ti tip TxRelation{..} decor DB.TxMeta{..} = do
           { inputId = getTxId (txInputSourceTxId tx)
           , inputIx = txInputSourceIndex tx
           }
-        , txInputSourceAmount tx
-        , lookupTxOutForTxIn tx decor
+        , Nothing
         )
     mkTxCollateral tx =
         ( WT.TxIn
           { inputId = getTxId (txCollateralSourceTxId tx)
           , inputIx = txCollateralSourceIndex tx
           }
-        , txCollateralSourceAmount tx
-        , lookupTxOutForTxCollateral tx decor
+        , Nothing
         )
     mkTxWithdrawal w = (txWithdrawalAccount w, txWithdrawalAmount w)
 

@@ -433,7 +433,7 @@ prop_removeWalletTwice db@DBLayer{..} (wid, InitialCheckpoint cp0, meta) =
 
 -- | Checks that a given resource can be read after having been inserted in DB.
 prop_readAfterPut
-    :: ( Buildable (f a), Eq (f a), Applicative f, GenState s )
+    :: ( Buildable (f a), Show (f a), Eq (f a), Applicative f, GenState s )
     => (  DBLayer IO s ShelleyKey
        -> WalletId
        -> a
@@ -459,8 +459,8 @@ prop_readAfterPut putOp readOp db@DBLayer{..} (wid, a) =
         run $ unsafeRunExceptT $ putOp db wid a
         res <- run $ readOp db wid
         let fa = pure a
-        monitor $ counterexample $ "\nInserted\n" <> pretty fa
-        monitor $ counterexample $ "\nRead\n" <> pretty res
+        monitor $ counterexample $ "\nInserted\n" <> show fa
+        monitor $ counterexample $ "\nRead\n" <> show res
         assertWith "Inserted == Read" (res == fa)
 
 prop_getTxAfterPutValidTxId
@@ -669,8 +669,8 @@ prop_sequentialPut putOp readOp resolve db@DBLayer{..} kv =
     setup = do
         run $ cleanDB db
         (InitialCheckpoint cp0, meta) <- pick arbitrary
-        run $ atomically $ unsafeRunExceptT $ once_ pairs $ \(k, _) ->
-            initializeWallet k cp0 meta mempty gp
+        run $ atomically $ unsafeRunExceptT $ once_ pairs $ \(walletId, _) ->
+            initializeWallet walletId cp0 meta mempty gp
     prop = do
         run $ unsafeRunExceptT $ forM_ pairs $ uncurry (putOp db)
         res <- run $ once pairs (readOp db . fst)
