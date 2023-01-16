@@ -2132,7 +2132,7 @@ postTransactionOld ctx@ApiLayer{..} genChange (ApiT wid) body =
             (tx, txMeta, txTime) <- atomicallyWithHandler
                 (ctx ^. walletLocks) (PostTransactionOld wid) $ do
                 -- sel' <- liftHandler $ W.assignChangeAddressesAndUpdateDb wrk wid genChange sel
-                (tx, txMeta, txTime, sealedTx) <- liftIO $ do
+                (tx, txMeta, txTime, sealedTx, _balancingResultInfo) <- liftIO $ do
                     pureTimeInterpreter <- snapshot ti
                     W.buildAndSignTransactionNew @k @'CredFromKeyK @s @n
                         (MsgWallet >$< wrk ^. W.logger)
@@ -2832,8 +2832,11 @@ constructSharedTransaction
                                 pure []
 
                         (sel', utx, fee') <- liftHandler $ runSelection outs
-                        sel <- liftHandler $
-                            W.assignChangeAddressesWithoutDbUpdate wrk wid genChange utx
+                        let (sel, _s') =
+                                W.assignChangeAddresses
+                                    genChange
+                                    utx
+                                    (getState cp)
                         (FeeEstimation estMin _) <- liftHandler $ W.estimateFee (pure fee')
                         pure (sel, sel', estMin)
 
@@ -2990,7 +2993,7 @@ balanceTransaction ctx@ApiLayer{..} genChange (ApiT wid) body = do
                 => W.PartialTx era
                 -> Handler (Cardano.Tx era)
             balanceTx partialTx =
-                liftHandler $ W.balanceTransaction @_ @IO @s @k @ktype
+                fmap fst $ liftHandler $ W.balanceTransaction @_ @IO @s @k @ktype
                     (MsgWallet >$< wrk ^. W.logger)
                     (ctx ^. typed)
                     genChange
