@@ -20,10 +20,7 @@ import Cardano.Wallet.DB.Fixtures
 import Cardano.Wallet.DB.Sqlite.Types
     ( TxId (TxId) )
 import Cardano.Wallet.DB.Store.Transactions.Decoration
-    ( decorateTxInsForRelation
-    , lookupTxOutForTxCollateral
-    , lookupTxOutForTxIn
-    )
+    ( decorateTxInsForRelation, lookupTxOut, mkTxOutKey, mkTxOutKeyCollateral )
 import Cardano.Wallet.DB.Store.Transactions.Model
     ( DeltaTxSet (..)
     , TxRelation (..)
@@ -106,7 +103,7 @@ prop_DecorateLinksTxInToTxOuts = do
     forAll transactionsGen $ \(txid, TxSet pile, txouts) ->
         let guinea = pile Map.! txid
             deco   = decorateTxInsForRelation (TxSet pile) guinea
-        in  [ lookupTxOutForTxIn txin deco | txin <- ins guinea]
+        in  [ lookupTxOut (mkTxOutKey txin) deco | txin <- ins guinea]
             === map Just txouts
 
 {- | We check that `decorateTxInsForRelation` indeed decorates transaction inputs.
@@ -133,7 +130,7 @@ prop_DecorateLinksTxCollateralsToTxOuts = do
     forAll transactionsGen $ \(txid, TxSet pile, txouts) ->
         let guinea = pile Map.! txid
             deco   = decorateTxInsForRelation (TxSet pile) guinea
-        in  [ lookupTxOutForTxCollateral txcol deco
+        in  [ lookupTxOut (mkTxOutKeyCollateral txcol) deco
             | txcol <- collateralIns guinea
             ]
             === map Just txouts

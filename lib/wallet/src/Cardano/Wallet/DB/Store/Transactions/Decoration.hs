@@ -16,9 +16,11 @@ corrisponding (known) tx outputs
 module Cardano.Wallet.DB.Store.Transactions.Decoration
    ( DecoratedTxIns
    , decorateTxInsForRelation
-   , lookupTxOutForTxIn
-   , lookupTxOutForTxCollateral
+   , lookupTxOut
    , decorateTxInsForReadTx
+   , mkTxOutKey
+   , mkTxOutKeyCollateral
+   , TxOutKey
    ) where
 
 import Prelude hiding
@@ -68,11 +70,11 @@ import qualified Data.Map.Strict as Map
 
 type TxOutKey = (TxId, Word32)
 
-toKeyTxIn :: TxIn -> TxOutKey
-toKeyTxIn txin = (txInputSourceTxId txin, txInputSourceIndex txin)
+mkTxOutKey :: TxIn -> TxOutKey
+mkTxOutKey txin = (txInputSourceTxId txin, txInputSourceIndex txin)
 
-toKeyTxCollateral :: TxCollateral -> TxOutKey
-toKeyTxCollateral txcol =
+mkTxOutKeyCollateral :: TxCollateral -> TxOutKey
+mkTxOutKeyCollateral txcol =
     (txCollateralSourceTxId txcol, txCollateralSourceIndex txcol)
 
 -- | A collection of Tx inputs
@@ -89,14 +91,9 @@ instance Semigroup DecoratedTxIns where
 instance Monoid DecoratedTxIns where
     mempty = DecoratedTxIns mempty
 
-lookupTxOutForTxIn
-    :: TxIn -> DecoratedTxIns -> Maybe W.TxOut
-lookupTxOutForTxIn tx = Map.lookup (toKeyTxIn tx) . unDecoratedTxIns
-
-lookupTxOutForTxCollateral
-    :: TxCollateral -> DecoratedTxIns -> Maybe W.TxOut
-lookupTxOutForTxCollateral tx =
-    Map.lookup (toKeyTxCollateral tx) . unDecoratedTxIns
+lookupTxOut
+    :: TxOutKey -> DecoratedTxIns -> Maybe W.TxOut
+lookupTxOut tx = Map.lookup tx . unDecoratedTxIns
 
 decorateTxInsInternal :: TxSet -> [(TxId, Word32)]
     -> [(TxId, Word32)] -> DecoratedTxIns
@@ -127,8 +124,8 @@ decorateTxInsInternal (TxSet relations) ins collateralIns =
 decorateTxInsForRelation
     :: TxSet -> TxRelation -> DecoratedTxIns
 decorateTxInsForRelation txSet TxRelation{ins,collateralIns} =
-    decorateTxInsInternal txSet (toKeyTxIn <$> ins)
-        (toKeyTxCollateral <$>collateralIns)
+    decorateTxInsInternal txSet (mkTxOutKey <$> ins)
+        (mkTxOutKeyCollateral <$> collateralIns)
 
 -- | Decorate the Tx inputs of a given 'TxRelation'
 -- by searching the 'TxSet' for corresponding output values.
