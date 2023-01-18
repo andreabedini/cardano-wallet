@@ -34,6 +34,8 @@ import Cardano.Wallet.Read.Primitive.Tx.Features.Fee
     ( getFee )
 import Cardano.Wallet.Read.Primitive.Tx.Features.Inputs
     ( getInputs )
+import Cardano.Wallet.Read.Primitive.Tx.Features.Outputs
+    ( getOutputs )
 import Cardano.Wallet.Read.Tx.CBOR
     ( renderTxToCBOR )
 import Cardano.Wallet.Read.Tx.CollateralInputs
@@ -44,6 +46,8 @@ import Cardano.Wallet.Read.Tx.Hash
     ( getEraTxHash )
 import Cardano.Wallet.Read.Tx.Inputs
     ( getEraInputs )
+import Cardano.Wallet.Read.Tx.Outputs
+    ( getEraOutputs )
 import Control.Category
     ( (.) )
 import Data.Functor
@@ -63,7 +67,6 @@ import qualified Cardano.Wallet.Primitive.Types.Tx.TxOut as WT
 import qualified Cardano.Wallet.Read.Tx as Read
 import qualified Data.Generics.Internal.VL as L
 import qualified Data.Map.Strict as Map
-
 -- | Compute a high level view of a transaction known as 'TransactionInfo'
 -- from a 'TxMeta' and a 'TxRelation'.
 -- Assumes that these data refer to the same 'TxId', does /not/ check this.
@@ -147,7 +150,7 @@ mkTransactionInfoFromReadTx _ti tip decor tx _meta = do
         , WT.txInfoInputs = mkTxIn <$> value (getInputs . getEraInputs)
         , WT.txInfoCollateralInputs = mkTxIn
             <$> value (getCollateralInputs . getEraCollateralInputs)
-        , WT.txInfoOutputs = undefined
+        , WT.txInfoOutputs = value (getOutputs . getEraOutputs)
         , WT.txInfoCollateralOutput = undefined
         , WT.txInfoWithdrawals = undefined
         , WT.txInfoMeta = WT.TxMeta
