@@ -15,7 +15,7 @@ import Cardano.Wallet.DB.Sqlite.Schema
 import Cardano.Wallet.DB.Sqlite.Types
     ( TxId (..) )
 import Cardano.Wallet.DB.Store.Submissions.New.Operations
-    ( SubmissionMeta )
+    ( SubmissionMeta (..) )
 import Cardano.Wallet.DB.Store.Transactions.Decoration
     ( DecoratedTxIns, TxOutKey, lookupTxOut, mkTxOutKey, mkTxOutKeyCollateral )
 import Cardano.Wallet.DB.Store.Transactions.Model
@@ -38,6 +38,8 @@ import Cardano.Wallet.Read.Primitive.Tx.Features.Inputs
     ( getInputs )
 import Cardano.Wallet.Read.Primitive.Tx.Features.Outputs
     ( getOutputs )
+import Cardano.Wallet.Read.Primitive.Tx.Features.Validity
+    ( getValidity )
 import Cardano.Wallet.Read.Primitive.Tx.Features.Withdrawals
     ( getWithdrawals )
 import Cardano.Wallet.Read.Tx.CBOR
@@ -54,8 +56,12 @@ import Cardano.Wallet.Read.Tx.Inputs
     ( getEraInputs )
 import Cardano.Wallet.Read.Tx.Outputs
     ( getEraOutputs )
+import Cardano.Wallet.Read.Tx.Validity
+    ( getEraValidity )
 import Cardano.Wallet.Read.Tx.Withdrawals
     ( getEraWithdrawals )
+import Cardano.Wallet.Transaction
+    ( ValidityIntervalExplicit (invalidHereafter) )
 import Control.Category
     ( (.) )
 import Data.Foldable
@@ -73,6 +79,7 @@ import qualified Cardano.Wallet.Primitive.Types.Coin as WC
 import qualified Cardano.Wallet.Primitive.Types.Hash as W
 import qualified Cardano.Wallet.Primitive.Types.Tx as WT
 import qualified Cardano.Wallet.Primitive.Types.Tx.TxIn as WT
+import qualified Cardano.Wallet.Primitive.Types.Tx.TxMeta as W
 import qualified Cardano.Wallet.Primitive.Types.Tx.TxOut as WT
 import qualified Cardano.Wallet.Read.Tx as Read
 import qualified Data.Generics.Internal.VL as L
@@ -151,8 +158,9 @@ mkTransactionInfoFromReadTx :: Monad m
     -> DecoratedTxIns
     -> EraValue Read.Tx
     -> SubmissionMeta
+    -> W.TxStatus
     -> m WT.TransactionInfo
-mkTransactionInfoFromReadTx _ti tip decor tx _meta = do
+mkTransactionInfoFromReadTx _ti tip decor tx SubmissionMeta{..} status = do
     return
         $ WT.TransactionInfo
         { WT.txInfoId = W.Hash $ txField getEraTxHash
@@ -167,12 +175,13 @@ mkTransactionInfoFromReadTx _ti tip decor tx _meta = do
         , WT.txInfoWithdrawals = fold
             $ value (getWithdrawals . getEraWithdrawals)
         , WT.txInfoMeta = WT.TxMeta
-              { WT.status = undefined
-              , WT.direction = undefined
-              , WT.slotNo = undefined
-              , WT.blockHeight = undefined
-              , amount = undefined
-              , WT.expiry = undefined
+              { WT.status = status
+              , WT.direction = submissionMetaDirection
+              , WT.slotNo = submissionMetaSlot
+              , WT.blockHeight = submissionMetaHeight
+              , WT.amount = submissionMetaAmount
+              , WT.expiry = W.SlotNo . getQuantity . invalidHereafter
+                    <$> value (getValidity . getEraValidity)
               }
         , WT.txInfoMetadata = undefined
         , WT.txInfoDepth = Quantity
