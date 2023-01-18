@@ -3007,6 +3007,7 @@ balanceTransaction ctx@ApiLayer{..} genChange genInpScripts (ApiT wid) body = do
                 liftHandler $ W.balanceTransaction @_ @IO @s @k @ktype
                     wrk
                     genChange
+                    genInpScripts
                     (pp, nodePParams)
                     ti
                     wallet

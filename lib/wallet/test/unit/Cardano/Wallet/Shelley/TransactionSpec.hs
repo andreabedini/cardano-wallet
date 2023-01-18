@@ -2513,6 +2513,7 @@ balanceTransactionSpec = describe "balanceTransaction" $ do
         balanceTransaction @_ @(Rand StdGen)
             (Ctx @(Rand StdGen) nullTracer testTxLayer)
             (delegationAddress @'Mainnet)
+            Nothing
             mockProtocolParametersForBalancing
             (dummyTimeInterpreterWithHorizon horizon)
             (u, wal, pending)
@@ -3393,6 +3394,7 @@ balanceTransaction' (Wallet' utxo wal pending) seed tx  =
         balanceTransaction @_ @(Rand StdGen)
             (Ctx @(Rand StdGen) nullTracer testTxLayer)
             (delegationAddress @'Mainnet)
+            Nothing
             mockProtocolParametersForBalancing
             dummyTimeInterpreter
             (utxo, wal, pending)
