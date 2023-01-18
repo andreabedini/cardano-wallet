@@ -2829,7 +2829,7 @@ constructSharedTransaction
                 balancedTx <-
                     balanceTransaction ctx genChange (ApiT wid)
                         ApiBalanceTransactionPostData
-                        { transaction = ApiT unbalancedTx
+                        { transaction = ApiT $ fst unbalancedTx
                         , inputs = []
                         , redeemers = []
                         , encoding = body ^. #encoding

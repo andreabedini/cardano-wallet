@@ -106,7 +106,6 @@ module Cardano.Wallet
     , ErrAddCosignerKey (..)
     , ErrConstructSharedWallet (..)
     , normalizeSharedAddress
-    , constructSharedTransaction
     , constructUnbalancedSharedTransaction
 
     -- ** Address
@@ -2588,7 +2587,7 @@ constructUnbalancedSharedTransaction
     -> Cardano.AnyCardanoEra
     -> TransactionCtx
     -> PreSelection
-    -> ExceptT ErrConstructTx IO SealedTx
+    -> ExceptT ErrConstructTx IO (SealedTx, Maybe ([(TxIn, TxOut)] -> Map TxIn (CA.Script KeyHash)) )
 constructUnbalancedSharedTransaction ctx wid era txCtx sel = db & \DBLayer{..} -> do
     cp <- withExceptT ErrConstructTxNoSuchWallet
         $ mapExceptT atomically
@@ -2598,44 +2597,6 @@ constructUnbalancedSharedTransaction ctx wid era txCtx sel = db & \DBLayer{..} -
     let accXPub = getRawKey $ Shared.accountXPub s
     let xpub = CA.getKey $
             deriveDelegationPublicKey (CA.liftXPub accXPub) minBound
-    mapExceptT atomically $ do
-        pp <- liftIO $ currentProtocolParameters nl
-        withExceptT ErrConstructTxBody $ ExceptT $ pure $
-            mkUnsignedTransaction tl era xpub pp txCtx (Left sel)
-  where
-    db = ctx ^. dbLayer @IO @s @k
-    tl = ctx ^. transactionLayer @k @'CredFromScriptK
-    nl = ctx ^. networkLayer
-
--- | Construct an unsigned transaction from a given selection
--- for a shared wallet.
-constructSharedTransaction
-    :: forall ctx s k (n :: NetworkDiscriminant).
-        ( HasTransactionLayer k 'CredFromScriptK ctx
-        , HasDBLayer IO s k ctx
-        , HasNetworkLayer IO ctx
-        , k ~ SharedKey
-        , s ~ SharedState n k
-        , Typeable n
-        )
-    => ctx
-    -> WalletId
-    -> Cardano.AnyCardanoEra
-    -> TransactionCtx
-    -> SelectionOf TxOut
-    -> ExceptT ErrConstructTx IO SealedTx
-constructSharedTransaction ctx wid era txCtx sel = db & \DBLayer{..} -> do
-    cp <- withExceptT ErrConstructTxNoSuchWallet
-        $ mapExceptT atomically
-        $ withNoSuchWallet wid
-        $ readCheckpoint wid
-    let s = getState cp
-    let accXPub = getRawKey $ Shared.accountXPub s
-    let xpub = CA.getKey $
-            deriveDelegationPublicKey (CA.liftXPub accXPub) minBound
-    let allInps =
-            (view #collateral sel) ++
-            NE.toList (view #inputs sel)
     let getScript (_, TxOut addr _) = case fst (isShared addr s) of
             Nothing ->
                 error $ "Some inputs selected by coin selection do not belong "
@@ -2650,12 +2611,12 @@ constructSharedTransaction ctx wid era txCtx sel = db & \DBLayer{..} -> do
                 in replaceCosignersWithVerKeys role' template ix
     let scriptInps =
             foldr (\inp@(txin,_) -> Map.insert txin (getScript inp))
-            Map.empty allInps
-    let txCtx' = txCtx {txNativeScriptInputs = scriptInps}
-    mapExceptT atomically $ do
+            Map.empty
+    sealedTx <- mapExceptT atomically $ do
         pp <- liftIO $ currentProtocolParameters nl
         withExceptT ErrConstructTxBody $ ExceptT $ pure $
-            mkUnsignedTransaction tl era xpub pp txCtx' (Right sel)
+            mkUnsignedTransaction tl era xpub pp txCtx (Left sel)
+    pure (sealedTx, Just scriptInps)
   where
     db = ctx ^. dbLayer @IO @s @k
     tl = ctx ^. transactionLayer @k @'CredFromScriptK
