@@ -136,6 +136,7 @@ import Cardano.Address.Script
     ( Cosigner (..)
     , KeyHash (..)
     , KeyRole (..)
+    , Script
     , ScriptTemplate (..)
     , ValidationLevel (..)
     , foldScript
@@ -2490,7 +2491,7 @@ constructTransaction
                     PreSelection { outputs = outs <> mintingOuts }
 
         balancedTx <-
-            balanceTransaction apiLayer genChange apiWalletId
+            balanceTransaction apiLayer genChange Nothing apiWalletId
                 ApiBalanceTransactionPostData
                 { transaction = ApiT unbalancedTx
                 , inputs = []
@@ -2827,7 +2828,7 @@ constructSharedTransaction
                     era txCtx PreSelection {outputs = outs}
 
                 balancedTx <-
-                    balanceTransaction ctx genChange (ApiT wid)
+                    balanceTransaction ctx genChange (snd unbalancedTx) (ApiT wid)
                         ApiBalanceTransactionPostData
                         { transaction = ApiT $ fst unbalancedTx
                         , inputs = []
@@ -2938,10 +2939,11 @@ balanceTransaction
      . (GenChange s, BoundedAddressLength k)
     => ApiLayer s k ktype
     -> ArgGenChange s
+    -> Maybe ([(TxIn, TxOut)] -> Map TxIn (Script KeyHash))
     -> ApiT WalletId
     -> ApiBalanceTransactionPostData n
     -> Handler ApiSerialisedTransaction
-balanceTransaction ctx@ApiLayer{..} genChange (ApiT wid) body = do
+balanceTransaction ctx@ApiLayer{..} genChange genInpScripts (ApiT wid) body = do
     -- NOTE: Ideally we'd read @pp@ and @era@ atomically.
     pp <- liftIO $ NW.currentProtocolParameters nl
     -- TODO: This throws when still in the Byron era.
