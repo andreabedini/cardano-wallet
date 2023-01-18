@@ -10,6 +10,7 @@
 
 module Cardano.Wallet.Read.Primitive.Tx.Babbage
     ( fromBabbageTx
+    , fromBabbageTxOut
     )
     where
 
@@ -173,12 +174,6 @@ fromBabbageTx tx@(Alonzo.ValidatedTx bod wits (Alonzo.IsValid isValid) aux) witC
         toPlutusVer Alonzo.PlutusV1 = PlutusVersionV1
         toPlutusVer Alonzo.PlutusV2 = PlutusVersionV2
 
-    fromBabbageTxOut
-        :: Babbage.TxOut (Cardano.ShelleyLedgerEra BabbageEra)
-        -> W.TxOut
-    fromBabbageTxOut (Babbage.TxOut addr value _datum _refScript) =
-        W.TxOut (fromShelleyAddress addr) $
-        fromCardanoValue $ Cardano.fromMaryValue value
 
     toSLMetadata (Alonzo.AuxiliaryData blob _scripts) = SL.Metadata blob
 
@@ -186,3 +181,10 @@ fromBabbageTx tx@(Alonzo.ValidatedTx bod wits (Alonzo.IsValid isValid) aux) witC
         if isValid
         then Just W.TxScriptValid
         else Just W.TxScriptInvalid
+
+fromBabbageTxOut
+    :: Babbage.TxOut (Cardano.ShelleyLedgerEra BabbageEra)
+    -> W.TxOut
+fromBabbageTxOut (Babbage.TxOut addr value _datum _refScript) =
+    W.TxOut (fromShelleyAddress addr) $
+    fromCardanoValue $ Cardano.fromMaryValue value

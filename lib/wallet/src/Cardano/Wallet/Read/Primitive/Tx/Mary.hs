@@ -11,6 +11,7 @@
 module Cardano.Wallet.Read.Primitive.Tx.Mary
     ( fromMaryTx
     , fromCardanoValue
+    , fromMaryTxOut
     )
     where
 
@@ -140,14 +141,6 @@ fromMaryTx tx witCtx =
     -- pre-images. But this is precisely what we want as part of the
     -- multisig/script balance reporting.
     toSLMetadata (MA.AuxiliaryData blob _scripts) = SL.Metadata blob
-
-    fromMaryTxOut
-        :: SL.TxOut (Cardano.ShelleyLedgerEra MaryEra)
-        -> W.TxOut
-    fromMaryTxOut (SL.TxOut addr value) =
-        W.TxOut (fromShelleyAddress addr) $
-        fromCardanoValue $ Cardano.fromMaryValue value
-
     fromMaryScriptMap
         :: Map
             (SL.ScriptHash (Crypto (MA.ShelleyMAEra 'MA.Mary Crypto.StandardCrypto)))
@@ -156,6 +149,14 @@ fromMaryTx tx witCtx =
     fromMaryScriptMap =
         Map.map (NativeScript . toWalletScript (toKeyRole witCtx)) .
         Map.mapKeys (toWalletTokenPolicyId . SL.PolicyID)
+
+fromMaryTxOut
+    :: SL.TxOut (Cardano.ShelleyLedgerEra MaryEra)
+    -> W.TxOut
+fromMaryTxOut (SL.TxOut addr value) =
+    W.TxOut (fromShelleyAddress addr) $
+    fromCardanoValue $ Cardano.fromMaryValue value
+
 
 -- Lovelace to coin. Quantities from ledger should always fit in Word64.
 fromCardanoLovelace :: HasCallStack => Cardano.Lovelace -> W.Coin

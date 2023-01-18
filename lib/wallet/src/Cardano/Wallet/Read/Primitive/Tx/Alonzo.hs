@@ -11,6 +11,7 @@
 
 module Cardano.Wallet.Read.Primitive.Tx.Alonzo
     ( fromAlonzoTx
+    , fromAlonzoTxOut
     )
     where
 
@@ -166,12 +167,6 @@ fromAlonzoTx tx@(Alonzo.ValidatedTx bod wits (Alonzo.IsValid isValid) aux) witCt
         toPlutusVer Alonzo.PlutusV1 = PlutusVersionV1
         toPlutusVer Alonzo.PlutusV2 = PlutusVersionV2
 
-    fromAlonzoTxOut
-        :: Alonzo.TxOut (Cardano.ShelleyLedgerEra AlonzoEra)
-        -> W.TxOut
-    fromAlonzoTxOut (Alonzo.TxOut addr value _) =
-        W.TxOut (fromShelleyAddress addr) $
-        fromCardanoValue $ Cardano.fromMaryValue value
 
     toSLMetadata (Alonzo.AuxiliaryData blob _scripts) = SL.Metadata blob
 
@@ -179,3 +174,10 @@ fromAlonzoTx tx@(Alonzo.ValidatedTx bod wits (Alonzo.IsValid isValid) aux) witCt
         if isValid
         then Just W.TxScriptValid
         else Just W.TxScriptInvalid
+
+fromAlonzoTxOut
+    :: Alonzo.TxOut (Cardano.ShelleyLedgerEra AlonzoEra)
+    -> W.TxOut
+fromAlonzoTxOut (Alonzo.TxOut addr value _) =
+    W.TxOut (fromShelleyAddress addr) $
+    fromCardanoValue $ Cardano.fromMaryValue value
