@@ -18,11 +18,15 @@ import Cardano.Wallet.Read.Eras
     ( EraFun (..), K (..) )
 import Cardano.Wallet.Read.Tx.Withdrawals
     ( Withdrawals (..) )
-import Data.Map.Strict (Map)
+import Data.Map.Strict
+    ( Map )
 
-import Cardano.Wallet.Primitive.Types.RewardAccount (RewardAccount)
-import Cardano.Wallet.Primitive.Types.Coin (Coin)
-import Cardano.Wallet.Read.Primitive.Tx.Shelley (fromShelleyWdrl)
+import Cardano.Wallet.Primitive.Types.Coin
+    ( Coin )
+import Cardano.Wallet.Primitive.Types.RewardAccount
+    ( RewardAccount )
+import Cardano.Wallet.Read.Primitive.Tx.Shelley
+    ( fromShelleyWdrl )
 
 getWithdrawals :: EraFun Withdrawals (K (Maybe (Map RewardAccount Coin)))
 getWithdrawals = EraFun
