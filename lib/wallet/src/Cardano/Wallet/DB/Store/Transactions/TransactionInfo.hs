@@ -28,12 +28,16 @@ import Cardano.Wallet.Primitive.Types.Tx
     ( TxCBOR, TxMeta (..) )
 import Cardano.Wallet.Read.Eras
     ( EraFun, EraValue, K, applyEraFun, extractEraValue )
+import Cardano.Wallet.Read.Primitive.Tx.Features.CollateralInputs
+    ( getCollateralInputs )
 import Cardano.Wallet.Read.Primitive.Tx.Features.Fee
     ( getFee )
 import Cardano.Wallet.Read.Primitive.Tx.Features.Inputs
     ( getInputs )
 import Cardano.Wallet.Read.Tx.CBOR
     ( renderTxToCBOR )
+import Cardano.Wallet.Read.Tx.CollateralInputs
+    ( getEraCollateralInputs )
 import Cardano.Wallet.Read.Tx.Fee
     ( getEraFee )
 import Cardano.Wallet.Read.Tx.Hash
@@ -141,7 +145,8 @@ mkTransactionInfoFromReadTx _ti tip decor tx _meta = do
         , WT.txInfoCBOR = Just $ renderTxToCBOR tx
         , WT.txInfoFee = txField $ getFee . getEraFee
         , WT.txInfoInputs = mkTxIn <$> value (getInputs . getEraInputs)
-        , WT.txInfoCollateralInputs = undefined
+        , WT.txInfoCollateralInputs = mkTxIn
+            <$> value (getCollateralInputs . getEraCollateralInputs)
         , WT.txInfoOutputs = undefined
         , WT.txInfoCollateralOutput = undefined
         , WT.txInfoWithdrawals = undefined
