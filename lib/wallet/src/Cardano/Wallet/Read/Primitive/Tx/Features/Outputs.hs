@@ -35,6 +35,7 @@ import Ouroboros.Consensus.Shelley.Eras
     ( StandardAllegra
     , StandardAlonzo
     , StandardBabbage
+    , StandardConway
     , StandardMary
     , StandardShelley
     )
@@ -64,6 +65,7 @@ getOutputs = EraFun
     , maryFun = \(Outputs os) -> K . fmap fromMaryTxOut $ toList os
     , alonzoFun = \(Outputs os) -> K . fmap fromAlonzoTxOut $ toList os
     , babbageFun = \(Outputs os) -> K . fmap fromBabbageTxOut $ toList os
+    , conwayFun = \(Outputs os) -> K . fmap fromConwayTxOut $ toList os
     }
 
 fromShelleyAddress :: SL.Addr crypto -> W.Address
@@ -95,6 +97,13 @@ fromBabbageTxOut
     :: Babbage.BabbageTxOut StandardBabbage
     -> W.TxOut
 fromBabbageTxOut (Babbage.BabbageTxOut addr value _datum _refScript) =
+    W.TxOut (fromShelleyAddress addr) $
+    fromCardanoValue $ Cardano.fromMaryValue value
+
+fromConwayTxOut
+    :: Babbage.BabbageTxOut StandardConway
+    -> W.TxOut
+fromConwayTxOut (Babbage.BabbageTxOut addr value _datum _refScript) =
     W.TxOut (fromShelleyAddress addr) $
     fromCardanoValue $ Cardano.fromMaryValue value
 
